@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . ./
 
-RUN apt-get update -y && install -y python-pyaudio python3-pyaudio
+RUN apt-get update && install -y python-pyaudio python3-pyaudio
 
 RUN pip install flask gunicorn pyaudio SpeechRecognition
 
