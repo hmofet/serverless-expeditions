@@ -1,13 +1,9 @@
-'''import os
-
-from flask import Flask
-from flask import render_template, request
-from currency_converter import CurrencyConverter
-
 app = Flask(__name__)
 
+import speech_recognition as sr
 
 @app.route("/")
+
 def form():
     return render_template("form.html")
 
@@ -19,61 +15,62 @@ def my_form_post():
     euros = request.form["euros"]
     usd = round(c.convert(euros, "EUR", "USD"), 2)
 
-    return render_template("form.html", euros=euros, usd=usd)
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone()
+
+    return render_template("form.html", euros=euros, usd=recognize_speech_from_mic(recognizer, microphone))
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))'''
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 # Python program to translate
 # speech to text and text to speech
 
 
-import speech_recognition as sr
-import pyttsx3
+def recognize_speech_from_mic(recognizer, microphone):
+    """Transcribe speech from recorded from `microphone`.
 
-# Initialize the recognizer
-r = sr.Recognizer()
+    Returns a dictionary with three keys:
+    "success": a boolean indicating whether or not the API request was
+               successful
+    "error":   `None` if no error occured, otherwise a string containing
+               an error message if the API could not be reached or
+               speech was unrecognizable
+    "transcription": `None` if speech could not be transcribed,
+               otherwise a string containing the transcribed text
+    """
+    # check that recognizer and microphone arguments are appropriate type
+    if not isinstance(recognizer, sr.Recognizer):
+        raise TypeError("`recognizer` must be `Recognizer` instance")
 
-# Function to convert text to
-# speech
-def SpeakText(command):
-	
-	# Initialize the engine
-	engine = pyttsx3.init()
-	engine.say(command)
-	engine.runAndWait()
-	
-	
-# Loop infinitely for user to
-# speak
+    if not isinstance(microphone, sr.Microphone):
+        raise TypeError("`microphone` must be `Microphone` instance")
 
-while(1):
-	
-	# Exception handling to handle
-	# exceptions at the runtime
-	try:
-		
-		# use the microphone as source for input.
-		with sr.Microphone() as source2:
-			
-			# wait for a second to let the recognizer
-			# adjust the energy threshold based on
-			# the surrounding noise level
-			r.adjust_for_ambient_noise(source2, duration=0.2)
-			
-			#listens for the user's input
-			audio2 = r.listen(source2)
-			
-			# Using google to recognize audio
-			MyText = r.recognize_google(audio2)
-			MyText = MyText.lower()
+    # adjust the recognizer sensitivity to ambient noise and record audio
+    # from the microphone
+    with microphone as source:
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
 
-			print("Did you say "+MyText)
-			SpeakText(MyText)
-			
-	except sr.RequestError as e:
-		print("Could not request results; {0}".format(e))
-		
-	except sr.UnknownValueError:
-		print("unknown error occured")
+    # set up the response object
+    response = {
+        "success": True,
+        "error": None,
+        "transcription": None
+    }
+
+    # try recognizing the speech in the recording
+    # if a RequestError or UnknownValueError exception is caught,
+    #     update the response object accordingly
+    try:
+        response["transcription"] = recognizer.recognize_google(audio)
+    except sr.RequestError:
+        # API was unreachable or unresponsive
+        response["success"] = False
+        response["error"] = "API unavailable"
+    except sr.UnknownValueError:
+        # speech was unintelligible
+        response["error"] = "Unable to recognize speech"
+
+    return response
