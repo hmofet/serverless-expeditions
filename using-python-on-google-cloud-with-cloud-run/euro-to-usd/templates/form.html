@@ -8,24 +8,16 @@
   </head>
   <body>
     <h1>Use mic to recognize speech</h1>
-    <div id="output">
-      <form method="POST">
-        € <input type="number"
-               name="euros"
-               step=".01"
-               min="0.01"
-               placeholder="Euros"
-               required
-               >
-        <input type="submit"
-               value="Convert">
-      </form>
-      {% if usd %}
+	<div id="input">
+	      <form method = "POST" 
+         enctype = "multipart/form-data">
+         <input type = "file" name = "file" />
+         <input type = "submit"/>
+      </form> 
+	</div>
       <h3>
-        €{{euros}} =
-        ${{usd}}
+        {{usd}}
       </h3>
-      {% endif %}
     </div>
   </body>
 </html>

@@ -1,6 +1,8 @@
 app = Flask(__name__)
 
-import speech_recognition as sr
+from google.cloud import storage
+from google.cloud import speech
+from flask import Flask, render_template, request
 
 @app.route("/")
 
@@ -10,16 +12,11 @@ def form():
 
 @app.route("/", methods=["POST"])
 def my_form_post():
-    c = CurrencyConverter()
-
-    euros = request.form["euros"]
-    usd = round(c.convert(euros, "EUR", "USD"), 2)
-
-    recognizer = sr.Recognizer()
-    microphone = sr.Microphone()
-
-    return render_template("form.html", euros=euros, usd=recognize_speech_from_mic(recognizer, microphone))
-
+    if request.method == 'POST':
+        file = request.files['file']
+        blob = bucket.blob(file.filename)
+        blob.upload_from_string(file.read(), content_type=file.content_type)
+        return render_template("form.html", recognition_output=transcribe_gcs(blob.public_url))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
@@ -27,50 +24,45 @@ if __name__ == "__main__":
 # Python program to translate
 # speech to text and text to speech
 
+def transcribe_gcs(gcs_uri):
+    """Asynchronously transcribes the audio file specified by the gcs_uri."""
 
-def recognize_speech_from_mic(recognizer, microphone):
-    """Transcribe speech from recorded from `microphone`.
+    client = speech.SpeechClient()
 
-    Returns a dictionary with three keys:
-    "success": a boolean indicating whether or not the API request was
-               successful
-    "error":   `None` if no error occured, otherwise a string containing
-               an error message if the API could not be reached or
-               speech was unrecognizable
-    "transcription": `None` if speech could not be transcribed,
-               otherwise a string containing the transcribed text
-    """
-    # check that recognizer and microphone arguments are appropriate type
-    if not isinstance(recognizer, sr.Recognizer):
-        raise TypeError("`recognizer` must be `Recognizer` instance")
+    audio = speech.RecognitionAudio(uri=gcs_uri)
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.FLAC,
+        sample_rate_hertz=16000,
+        language_code="en-US",
+    )
 
-    if not isinstance(microphone, sr.Microphone):
-        raise TypeError("`microphone` must be `Microphone` instance")
+    operation = client.long_running_recognize(config=config, audio=audio)
 
-    # adjust the recognizer sensitivity to ambient noise and record audio
-    # from the microphone
-    with microphone as source:
-        recognizer.adjust_for_ambient_noise(source)
-        audio = recognizer.listen(source)
+    print("Waiting for operation to complete...")
+    response = operation.result(timeout=90)
 
-    # set up the response object
-    response = {
-        "success": True,
-        "error": None,
-        "transcription": None
-    }
+    # Each result is for a consecutive portion of the audio. Iterate through
+    # them to get the transcripts for the entire audio file.
+    for result in response.results:
+        # The first alternative is the most likely one for this portion.
+        return(u"Transcript: {}".format(result.alternatives[0].transcript))
+        #print("Confidence: {}".format(result.alternatives[0].confidence))
+        
+def upload_blob(bucket_name, source_file_name, destination_blob_name):
+    """Uploads a file to the bucket."""
+    # The ID of your GCS bucket
+    # bucket_name = "your-bucket-name"
+    # The path to your file to upload
+    # source_file_name = "local/path/to/file"
+    # The ID of your GCS object
+    # destination_blob_name = "storage-object-name"
 
-    # try recognizing the speech in the recording
-    # if a RequestError or UnknownValueError exception is caught,
-    #     update the response object accordingly
-    try:
-        response["transcription"] = recognizer.recognize_google(audio)
-    except sr.RequestError:
-        # API was unreachable or unresponsive
-        response["success"] = False
-        response["error"] = "API unavailable"
-    except sr.UnknownValueError:
-        # speech was unintelligible
-        response["error"] = "Unable to recognize speech"
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
 
-    return response
+    blob.upload_from_filename(source_file_name)
+
+    print(
+        f"File {source_file_name} uploaded to {destination_blob_name}."
+    )
